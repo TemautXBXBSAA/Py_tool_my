@@ -48,8 +48,7 @@ class Cv2Window:
             cv2.EVENT_MOUSEMOVE: self._on_drag,
         }
         
-        self._board_event_handler: Callable[[int], None] = lambda key: logger.debug(f"Key pressed: {key}")
-        self._use_custom_board_event = False
+        self._board_event_handler: Callable[[int], None] = self._default_board_event
 
     def show(self):
         """
@@ -74,12 +73,10 @@ class Cv2Window:
             
         self._running = False
         self._close_event.set()
-
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=2.0)
             if self._thread.is_alive():
                 logger.warning(f"Thread for window '{self.name}' did not terminate gracefully.")
-        
         try:
             cv2.destroyWindow(self.name)
         except cv2.error as e:
@@ -124,7 +121,6 @@ class Cv2Window:
         :param function: Callback function receiving the key value (int), defaults: `lambda key: logger.debug(f"Key pressed: {key}")`
         """
         self._board_event_handler = function
-        self._use_custom_board_event = True
     def _display_loop(self):
         """
         Main loop of the background thread, responsible for creating the window, 
@@ -134,25 +130,19 @@ class Cv2Window:
             cv2.namedWindow(self.name, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
             cv2.setMouseCallback(self.name, self._mouse_callback)
             self._adjust_window_initial_state()
+            wait_time = 1000 // self.fps
             time.sleep(0.1)
+            
             while self._running and not self._close_event.is_set():
                 if cv2.getWindowProperty(self.name, cv2.WND_PROP_VISIBLE) < 1:
                     break
-                wait_time = 1000 // self.fps
                 key = cv2.waitKey(wait_time) & 0xFF
-                
-                if key != 255:
-                    if self._use_custom_board_event:
-                        self._board_event_handler(key)
-                    else:
-                        self._default_board_event(key)
-                        
-                if key == 27: # ESC
-                    break
+                self._board_event_handler(key)
 
                 # Display
                 with self._pic_lock:
                     current_pic = self._pic.copy()
+                
                 if current_pic is not None and current_pic.size > 0:
                     cv2.imshow(self.name, current_pic)
                     
@@ -201,8 +191,12 @@ class Cv2Window:
     def _default_board_event(self, key: int):
         """Default keyboard event handler"""
         if key == 27: # ESC
-            logger.info("ESC pressed, closing window.")
+            logger.debug("ESC pressed, closing window.")
             self.close()
+        elif key == 255:
+            pass
+        else:
+            logger.debug(f"Key pressed: {key}")
 
     def _on_l_up(self, event, x, y, flags, param):
         logger.debug(f"Left Button Up: ({x}, {y})")
@@ -261,8 +255,8 @@ if __name__ == "__main__":
 
     with Cv2Window(pic, "Test Window", fps=30, auto_scale=0.5) as cv2_window: # It will automatically show and close the window.
         cv2_window.change_board_event(new_board_event)
-        for i in range(50):
-            time.sleep(1)
+        for i in range(10):
+            time.sleep(0.1)
             if i % 2 == 0:
                 cv2_window.update(pic_2)
             else:
