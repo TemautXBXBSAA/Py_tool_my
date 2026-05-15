@@ -4,10 +4,11 @@ import threading
 from typing import Callable, Optional
 import ctypes
 import time
+import log
 import logging
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = log.Logger("cv2window_model")
+logger.setLevel(logging.INFO)
 
 class Cv2Window:
     """
