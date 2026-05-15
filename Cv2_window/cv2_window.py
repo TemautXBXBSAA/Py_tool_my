@@ -18,6 +18,8 @@ class Cv2Window:
     def __init__(self, pic: np.ndarray, name: str, fps: int = 24, auto_scale: float = 0.8, auto_copy: bool = True):
         """
         Initialize Cv2Window.
+        You show use "show()" to start the window display, use "update()" to update the image, 
+        and "close()" to close the window.
         
         :param pic: Initial image to display (numpy array).
         :param name: Window name.
@@ -51,6 +53,7 @@ class Cv2Window:
         }
         
         self._board_event_handler: Callable[[int], None] = self._default_board_event
+        self._show_callback = lambda: None
 
     def show(self):
         """
@@ -123,6 +126,16 @@ class Cv2Window:
         :param function: Callback function receiving the key value (int), defaults: `lambda key: logger.debug(f"Key pressed: {key}")`
         """
         self._board_event_handler = function
+
+    def add_show_callback(self, function: Callable[[], None]):
+        """
+        Add a callback function to be executed when the window is shown.
+        This function is called before each frame refresh.
+        
+        :param function: Callback function, defaults: `lambda: None`
+        """
+        self._show_callback = function
+
     def _display_loop(self):
         """
         Main loop of the background thread, responsible for creating the window, 
@@ -132,6 +145,7 @@ class Cv2Window:
             cv2.namedWindow(self.name, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
             cv2.setMouseCallback(self.name, self._mouse_callback)
             self._adjust_window_initial_state()
+            
             wait_time = 1000 // self.fps
             time.sleep(0.1)
             
@@ -142,12 +156,17 @@ class Cv2Window:
                 if key != 255:
                     self._board_event_handler(key)
 
+                #show_callback
+                self._show_callback()
+
                 # Display
                 with self._pic_lock:
                     current_pic = self._pic.copy() if self.auto_copy else self._pic
-                
+
                 if current_pic is not None and current_pic.size > 0:
                     cv2.imshow(self.name, current_pic)
+                
+                
                     
         except Exception as e:
             logger.error(f"Error in display loop for window '{self.name}': {e}", exc_info=True)
