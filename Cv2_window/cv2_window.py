@@ -294,6 +294,7 @@ if __name__ == "__main__":
         elif key == 27:
             print("ESC pressed via custom handler!")
 
+    # Test 1: Single window usage (Original test)
     with Cv2Window(pic, "Test Window", fps=30, auto_scale=0.5) as cv2_window:
         cv2_window.change_board_event(new_board_event)
         cv2_window.show()
@@ -303,4 +304,46 @@ if __name__ == "__main__":
                 cv2_window.update(pic_2)
             else:
                 cv2_window.update(pic)
-    print("Application finished.")
+    print("Application finished single window test.")
+
+    # Test 2: Multi-window usage
+    print("Starting multi-window test...")
+    win1_img = np.ones((400, 400, 3), dtype=np.uint8) * 255  # White background
+    cv2.putText(win1_img, "Window 1", (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
+    win2_img = np.ones((400, 400, 3), dtype=np.uint8) * 0  # Black background
+    cv2.putText(win2_img, "Window 2", (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+    window1 = Cv2Window(win1_img, "Multi-Test Win 1", fps=20, auto_scale=0.4)
+    window2 = Cv2Window(win2_img, "Multi-Test Win 2", fps=20, auto_scale=0.4)
+
+    try:
+        # Start both windows
+        window1.show()
+        window2.show()
+        
+        # Update them concurrently for a few seconds
+        start_time = time.time()
+        while time.time() - start_time < 5:  # Run for 5 seconds
+            # Update Window 1 with changing text or color to prove it's alive
+            temp_img1 = win1_img.copy()
+            timestamp = time.strftime("%H:%M:%S", time.localtime())
+            cv2.putText(temp_img1, timestamp, (50, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+            window1.update(temp_img1)
+            
+            # Update Window 2 similarly
+            temp_img2 = win2_img.copy()
+            cv2.putText(temp_img2, timestamp, (50, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            window2.update(temp_img2)
+            
+            time.sleep(0.5)
+            
+        print("Multi-window test finished. Closing windows...")
+    except Exception as e:
+        logger.error(f"Error during multi-window test: {e}")
+    finally:
+        # Ensure both windows are closed
+        window1.close()
+        window2.close()
+        
+    print("All tests completed.")
