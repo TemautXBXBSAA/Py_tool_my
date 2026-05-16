@@ -7,7 +7,7 @@ import logging
 import tkinter
 
 try:
-    import log
+    import log #only a colorful logger
     logger = log.Logger("CV2Window_model")
     logger.setLevel(logging.INFO)
 except ImportError:
@@ -26,13 +26,14 @@ class CV2Window:
     Supports multi-threaded image updates, custom mouse/keyboard event handling, 
     automatic scaling, and centered display.
     """
-    def __init__(self, pic: np.ndarray, name: str, fps: int = 24, auto_scale: float = 0.8, auto_copy: bool = True):
+    def __init__(self, pic: np.ndarray, name: str, fps: int = 24, auto_scale: float = 0.8, auto_copy: bool = False):
         """
         Initialize CV2Window.
         You should use "show()" to start the window display, use "update()" to update the image, 
         and "close()" to close the window.
         You could use "self.args: dict[name,value]" to store or get additional information.
-        
+        If image may be modified, please set "auto_copy" to True.
+
         :param pic: Initial image to display (numpy array).
         :param name: Window name.
         :param fps: Refresh frame rate.
@@ -338,48 +339,31 @@ if __name__ == "__main__":
     try:
         start_time = time.time()
 
+        def update_img(CV2Window:CV2Window,base_img):
+            current_time = time.time()
+            time_struct = time.localtime(current_time)
+            milliseconds = int((current_time % 1) * 1000)
+            timestamp = time.strftime("%H:%M:%S", time_struct) + f".{milliseconds:03d}"
+            if CV2Window.args.get("last_time", 0) == 0:
+                CV2Window.args["last_time"] = time.time()
+                return
+            current_time = time.time()
+            last_time = CV2Window.args.get("last_time", current_time)
+            dt = current_time - last_time
+            if dt <= 0:
+                return
+            fps_val = 1.0 / dt
+            CV2Window.args["fps"] = fps_val
+            CV2Window.args["last_time"] = current_time
+            img = base_img.copy()
+            cv2.putText(img, timestamp, (50, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+            fps_text = f"FPS: {fps_val:.2f}"
+            cv2.putText(img, fps_text, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            CV2Window.update(img)
         def get_fps_windows1():
-            current_time = time.time()
-            time_struct = time.localtime(current_time)
-            milliseconds = int((current_time % 1) * 1000)
-            timestamp = time.strftime("%H:%M:%S", time_struct) + f".{milliseconds:03d}"
-            if window1.args.get("last_time", 0) == 0:
-                window1.args["last_time"] = time.time()
-                return
-            current_time = time.time()
-            last_time = window1.args.get("last_time", current_time)
-            dt = current_time - last_time
-            if dt <= 0:
-                return
-            fps_val = 1.0 / dt
-            window1.args["fps"] = fps_val
-            window1.args["last_time"] = current_time
-            temp_img1 = win1_img.copy()
-            cv2.putText(temp_img1, timestamp, (50, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-            fps_text = f"FPS: {fps_val:.2f}"
-            cv2.putText(temp_img1, fps_text, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            window1.update(temp_img1)
+            update_img(window1,win1_img)
         def get_fps_windows2():
-            current_time = time.time()
-            time_struct = time.localtime(current_time)
-            milliseconds = int((current_time % 1) * 1000)
-            timestamp = time.strftime("%H:%M:%S", time_struct) + f".{milliseconds:03d}"
-            if window2.args.get("last_time", 0) == 0:
-                window2.args["last_time"] = time.time()
-                return
-            current_time = time.time()
-            last_time = window2.args.get("last_time", current_time)
-            dt = current_time - last_time
-            if dt <= 0:
-                return
-            fps_val = 1.0 / dt
-            window2.args["fps"] = fps_val
-            window2.args["last_time"] = current_time
-            temp_img2 = win2_img.copy()
-            cv2.putText(temp_img2, timestamp, (50, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            fps_text = f"FPS: {fps_val:.2f}"
-            cv2.putText(temp_img2, fps_text, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            window2.update(temp_img2)
+            update_img(window2,win2_img)
 
         window1.set_show_callback(get_fps_windows1)
         window2.set_show_callback(get_fps_windows2)
@@ -388,13 +372,14 @@ if __name__ == "__main__":
         window2.show()
 
         for i in range(1000):
+            if not window1._running and not window2._running:
+                break
             time.sleep(1) # Run for 10 seconds
 
         print("Multi-window test finished. Closing windows...")
     except Exception as e:
         logger.error(f"Error during multi-window test: {e}")
     finally:
-        # Ensure both windows are closed
         window1.close()
         window2.close()
         
