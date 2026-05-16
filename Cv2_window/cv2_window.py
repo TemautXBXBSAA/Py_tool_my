@@ -4,11 +4,20 @@ import threading
 from typing import Callable, Optional, Any
 import ctypes
 import time
-import log
 import logging
 
-logger = log.Logger("cv2window_model")
-logger.setLevel(logging.INFO)
+try:
+    import log
+    logger = log.Logger("cv2window_model")
+    logger.setLevel(logging.INFO)
+except ImportError:
+    logger = logging.getLogger("cv2window_model")
+    logger.setLevel(logging.INFO)
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
 
 class Cv2Window:
     """
@@ -19,7 +28,7 @@ class Cv2Window:
     def __init__(self, pic: np.ndarray, name: str, fps: int = 24, auto_scale: float = 0.8, auto_copy: bool = True):
         """
         Initialize Cv2Window.
-        You show use "show()" to start the window display, use "update()" to update the image, 
+        You should use "show()" to start the window display, use "update()" to update the image, 
         and "close()" to close the window.
         
         :param pic: Initial image to display (numpy array).
@@ -324,7 +333,7 @@ if __name__ == "__main__":
         
         # Update them concurrently for a few seconds
         start_time = time.time()
-        while time.time() - start_time < 5:  # Run for 5 seconds
+        while time.time() - start_time < 10:  # Run for 10 seconds
             # Update Window 1 with changing text or color to prove it's alive
             temp_img1 = win1_img.copy()
             timestamp = time.strftime("%H:%M:%S", time.localtime())
