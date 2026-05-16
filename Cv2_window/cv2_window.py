@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import threading
-from typing import Callable, Optional
+from typing import Callable, Optional, Any
 import ctypes
 import time
 import log
@@ -54,6 +54,7 @@ class Cv2Window:
         }
         
         self._board_event_handler: Callable[[int], None] = self._default_board_event
+        self._mouse_event_handler: Callable[[int, int, int, int, Any], None] = self._mouse_callback
         self._show_callback = lambda: None
 
     def show(self):
@@ -106,7 +107,7 @@ class Cv2Window:
         with self._pic_lock:
             self._pic = pic.copy() if self.auto_copy else pic
 
-    def change_mouse_event(self, event: int, function: Callable[[int, int, int, int, any], None]):
+    def change_mouse_event(self, event: int, function: Callable[[int, int, int, int, Any], None]):
         """
         Change the callback function for a specific mouse event.
         
@@ -128,6 +129,22 @@ class Cv2Window:
         """
         self._board_event_handler = function
 
+    def change_mouse_callback(self, function: Callable[[int, int, int, int, Any], None]):
+        """
+        Set custom mouse event handling logic.
+        Note: This function is called in every loop iteration with the current mouse event.
+        Defaults: 
+        `def function(event, x, y, flags, param):
+            if event in self._mouse_actions:
+                try:
+                    self._mouse_actions[event](event, x, y, flags, param)
+                except Exception as e:
+                    logger.error(f"Error in mouse event handler for event {event}: {e}")`
+
+        :param function: Callback function with signature func(event, x, y, flags, param).
+        """
+        self._mouse_event_handler = function
+
     def add_show_callback(self, function: Callable[[], None]):
         """
         Add a callback function to be executed when the window is shown.
@@ -144,7 +161,7 @@ class Cv2Window:
         """
         try:
             cv2.namedWindow(self.name, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
-            cv2.setMouseCallback(self.name, self._mouse_callback)
+            cv2.setMouseCallback(self.name, self._mouse_event_handler)
             self._adjust_window_initial_state()
             
             wait_time = 1000 // self.fps
@@ -204,7 +221,7 @@ class Cv2Window:
         except Exception as e:
             logger.warning(f"Could not adjust window position/size automatically: {e}")
 
-    def _mouse_callback(self, event: int, x: int, y: int, flags: int, param: any):
+    def _mouse_callback(self, event: int, x: int, y: int, flags: int, param: Any):
         """
         Unified entry point for OpenCV mouse events.
         """
