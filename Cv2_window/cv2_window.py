@@ -2,24 +2,25 @@ import cv2
 import numpy as np
 import threading
 from typing import Callable, Optional, Any
-import ctypes
 import time
 import logging
+import tkinter
 
 try:
     import log
-    logger = log.Logger("cv2window_model")
+    logger = log.Logger("CV2Window_model")
     logger.setLevel(logging.INFO)
 except ImportError:
-    logger = logging.getLogger("cv2window_model")
+    logger = logging.getLogger("CV2Window_model")
     logger.setLevel(logging.INFO)
     if not logger.handlers:
         handler = logging.StreamHandler()
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         logger.addHandler(handler)
+    logger.warning("'log' module not found, using default logger")
 
-class Cv2Window:
+class CV2Window:
     """
     A thread-safe OpenCV window display class.
     Supports multi-threaded image updates, custom mouse/keyboard event handling, 
@@ -27,9 +28,10 @@ class Cv2Window:
     """
     def __init__(self, pic: np.ndarray, name: str, fps: int = 24, auto_scale: float = 0.8, auto_copy: bool = True):
         """
-        Initialize Cv2Window.
+        Initialize CV2Window.
         You should use "show()" to start the window display, use "update()" to update the image, 
         and "close()" to close the window.
+        You could use "self.args: dict[name,value]" to store or get additional information.
         
         :param pic: Initial image to display (numpy array).
         :param name: Window name.
@@ -38,18 +40,23 @@ class Cv2Window:
                            If 0, automatic scaling is disabled.
         :param auto_copy: If True, a copy of the image is made for each update.
         """
+        ROOT = tkinter.Tk()
+        self.screen_width = ROOT.winfo_screenwidth()
+        self.screen_height = ROOT.winfo_screenheight()
+        ROOT.destroy()
         self.auto_copy = auto_copy
         self._pic = pic.copy() if auto_copy else pic
         self.name = name
         self.fps = max(1, fps)
         self.auto_scale = max(0, min(1.0, auto_scale))
-        
+        self.args: dict = {}
+
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._pic_lock = threading.Lock()
         self._close_event = threading.Event()
         
-        self._mouse_actions = {
+        self._mouse_actions: dict[int, Callable[[int, int, int, int, Any], None]] = {
             cv2.EVENT_LBUTTONUP: self._on_l_up,
             cv2.EVENT_LBUTTONDOWN: self._on_l_down,
             cv2.EVENT_RBUTTONUP: self._on_r_up,
@@ -76,7 +83,7 @@ class Cv2Window:
 
         self._close_event.clear()
         self._running = True
-        self._thread = threading.Thread(target=self._display_loop, daemon=False, name=f"Cv2Window-{self.name}")
+        self._thread = threading.Thread(target=self._display_, daemon=True, name=f"CV2Window-{self.name}")
         self._thread.start()
         logger.info(f"Window '{self.name}' started.")
 
@@ -89,6 +96,7 @@ class Cv2Window:
             
         self._running = False
         self._close_event.set()
+
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=2.0)
             if self._thread.is_alive():
@@ -99,7 +107,6 @@ class Cv2Window:
             if e.code != -27:
                 logger.error(f"Error destroying window: {e}")
 
-        
         self._thread = None
         logger.info(f"Window '{self.name}' closed.")
 
@@ -138,7 +145,7 @@ class Cv2Window:
         """
         self._board_event_handler = function
 
-    def change_mouse_callback(self, function: Callable[[int, int, int, int, Any], None]):
+    def set_mouse_callback(self, function: Callable[[int, int, int, int, Any], None]):
         """
         Set custom mouse event handling logic.
         Note: This function is called in every loop iteration with the current mouse event.
@@ -154,7 +161,7 @@ class Cv2Window:
         """
         self._mouse_event_handler = function
 
-    def add_show_callback(self, function: Callable[[], None]):
+    def set_show_callback(self, function: Callable[[], None]):
         """
         Add a callback function to be executed when the window is shown.
         This function is called before each frame refresh.
@@ -163,31 +170,33 @@ class Cv2Window:
         """
         self._show_callback = function
 
-    def _display_loop(self):
+    def _display_(self):
         """
         Main loop of the background thread, responsible for creating the window, 
         handling events, and refreshing the image.
         """
         try:
             cv2.namedWindow(self.name, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
-            cv2.setMouseCallback(self.name, self._mouse_event_handler)
+            cv2.setMouseCallback(self.name,self._mouse_event_handler)
             self._adjust_window_initial_state()
             
-            wait_time = 1000 // self.fps
+            wait_time = (1000 // self.fps) - 1
             time.sleep(0.1)
             
             while self._running and not self._close_event.is_set():
+                time.sleep(wait_time / 1000.0) #Generally, it doesn't need to be too precise.
                 if cv2.getWindowProperty(self.name, cv2.WND_PROP_VISIBLE) < 1:
                     break
-                key = cv2.waitKey(wait_time) & 0xFF
+                key = cv2.pollKey() & 0xFF
                 if key != 255:
-                    self._board_event_handler(key)
-
-                #show_callback
+                    try:
+                        self._board_event_handler(key)
+                    except Exception as e:
+                        logger.exception(f"Error in keyboard event handler for window '{self.name}': {e}")
                 try:
                     self._show_callback()
                 except Exception as e:
-                    logger.warning(f"Error in show callback for window '{self.name}': {e}")
+                    logger.exception(f"Error in show callback for window '{self.name}': {e}")
 
                 # Display
                 with self._pic_lock:
@@ -195,12 +204,9 @@ class Cv2Window:
 
                 if current_pic is not None and current_pic.size > 0:
                     cv2.imshow(self.name, current_pic)
-                
-                
-                    
+        
         except Exception as e:
-            logger.error(f"Error in display loop for window '{self.name}': {e}", exc_info=True)
-            self.close()
+            logger.exception(f"Error in display loop for window '{self.name}': {e}", exc_info=True)
 
     def _adjust_window_initial_state(self):
         """
@@ -208,27 +214,22 @@ class Cv2Window:
         and auto_scale setting.
         """
         try:
-            # Use ctypes to get screen width and height via Windows API
-            user32 = ctypes.windll.user32
-            screen_width = user32.GetSystemMetrics(0)  # SM_CXSCREEN
-            screen_height = user32.GetSystemMetrics(1) # SM_CYSCREEN
-            
             h, w = self._pic.shape[:2]
-            scale_w = (screen_width * self.auto_scale) / w
-            scale_h = (screen_height * self.auto_scale) / h
+            scale_w = (self.screen_width * self.auto_scale) / w
+            scale_h = (self.screen_height * self.auto_scale) / h
             scale = min(scale_w, scale_h, 1.0)
 
             display_w = int(w * scale) if self.auto_scale > 0 else w
             display_h = int(h * scale) if self.auto_scale > 0 else h
 
-            pos_x = max(0, (screen_width - display_w) // 2)
-            pos_y = max(0, (screen_height - display_h) // 2)
+            pos_x = max(0, (self.screen_width - display_w) // 2)
+            pos_y = max(0, (self.screen_height - display_h) // 2)
             
             cv2.resizeWindow(self.name, display_w, display_h)
             cv2.moveWindow(self.name, pos_x, pos_y)
             
         except Exception as e:
-            logger.warning(f"Could not adjust window position/size automatically: {e}")
+            logger.warning(f"Skip, could not adjust window position/size automatically: {e}")
 
     def _mouse_callback(self, event: int, x: int, y: int, flags: int, param: Any):
         """
@@ -243,10 +244,18 @@ class Cv2Window:
         """Default keyboard event handler"""
         if key == 27: # ESC
             logger.debug("ESC pressed, closing window.")
-            self.close()
+            #self.close()
+            self._inner_close()
         else:
             logger.debug(f"Key pressed: {key}")
 
+    def _inner_close(self):
+        self._running = False
+        self._close_event.set()
+        try:
+            cv2.destroyWindow(self.name)
+        except Exception as e:
+            logger.warning(f"Error while closing window: {e}.")
     def _on_l_up(self, event, x, y, flags, param):
         logger.debug(f"Left Button Up: ({x}, {y})")
 
@@ -304,7 +313,7 @@ if __name__ == "__main__":
             print("ESC pressed via custom handler!")
 
     # Test 1: Single window usage (Original test)
-    with Cv2Window(pic, "Test Window", fps=30, auto_scale=0.5) as cv2_window:
+    with CV2Window(pic, "Test Window", fps=30, auto_scale=0.5) as cv2_window:
         cv2_window.change_board_event(new_board_event)
         cv2_window.show()
         for i in range(15):
@@ -323,30 +332,64 @@ if __name__ == "__main__":
     win2_img = np.ones((400, 400, 3), dtype=np.uint8) * 0  # Black background
     cv2.putText(win2_img, "Window 2", (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
-    window1 = Cv2Window(win1_img, "Multi-Test Win 1", fps=20, auto_scale=0.4)
-    window2 = Cv2Window(win2_img, "Multi-Test Win 2", fps=20, auto_scale=0.4)
+    window1 = CV2Window(win1_img, "Multi-Test Win 1", fps=2, auto_scale=0.4)
+    window2 = CV2Window(win2_img, "Multi-Test Win 2", fps=24, auto_scale=0.4)
 
     try:
-        # Start both windows
-        window1.show()
-        window2.show()
-        
-        # Update them concurrently for a few seconds
         start_time = time.time()
-        while time.time() - start_time < 10:  # Run for 10 seconds
-            # Update Window 1 with changing text or color to prove it's alive
+
+        def get_fps_windows1():
+            current_time = time.time()
+            time_struct = time.localtime(current_time)
+            milliseconds = int((current_time % 1) * 1000)
+            timestamp = time.strftime("%H:%M:%S", time_struct) + f".{milliseconds:03d}"
+            if window1.args.get("last_time", 0) == 0:
+                window1.args["last_time"] = time.time()
+                return
+            current_time = time.time()
+            last_time = window1.args.get("last_time", current_time)
+            dt = current_time - last_time
+            if dt <= 0:
+                return
+            fps_val = 1.0 / dt
+            window1.args["fps"] = fps_val
+            window1.args["last_time"] = current_time
             temp_img1 = win1_img.copy()
-            timestamp = time.strftime("%H:%M:%S", time.localtime())
             cv2.putText(temp_img1, timestamp, (50, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+            fps_text = f"FPS: {fps_val:.2f}"
+            cv2.putText(temp_img1, fps_text, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
             window1.update(temp_img1)
-            
-            # Update Window 2 similarly
+        def get_fps_windows2():
+            current_time = time.time()
+            time_struct = time.localtime(current_time)
+            milliseconds = int((current_time % 1) * 1000)
+            timestamp = time.strftime("%H:%M:%S", time_struct) + f".{milliseconds:03d}"
+            if window2.args.get("last_time", 0) == 0:
+                window2.args["last_time"] = time.time()
+                return
+            current_time = time.time()
+            last_time = window2.args.get("last_time", current_time)
+            dt = current_time - last_time
+            if dt <= 0:
+                return
+            fps_val = 1.0 / dt
+            window2.args["fps"] = fps_val
+            window2.args["last_time"] = current_time
             temp_img2 = win2_img.copy()
             cv2.putText(temp_img2, timestamp, (50, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            fps_text = f"FPS: {fps_val:.2f}"
+            cv2.putText(temp_img2, fps_text, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
             window2.update(temp_img2)
-            
-            time.sleep(0.5)
-            
+
+        window1.set_show_callback(get_fps_windows1)
+        window2.set_show_callback(get_fps_windows2)
+
+        window1.show()
+        window2.show()
+
+        for i in range(1000):
+            time.sleep(1) # Run for 10 seconds
+
         print("Multi-window test finished. Closing windows...")
     except Exception as e:
         logger.error(f"Error during multi-window test: {e}")
