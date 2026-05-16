@@ -180,12 +180,14 @@ class CV2Window:
             cv2.namedWindow(self.name, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
             cv2.setMouseCallback(self.name,self._mouse_event_handler)
             self._adjust_window_initial_state()
-            
-            wait_time = (1000 // self.fps) - 1
             time.sleep(0.1)
-            
+            frame_time = 1.0 / self.fps
+            last_time = time.time()
             while self._running and not self._close_event.is_set():
-                time.sleep(wait_time / 1000.0) #Generally, it doesn't need to be too precise.
+                start_time = time.time()
+                wait_time = max(0, frame_time - (start_time - last_time))
+                time.sleep(wait_time) #Generally, it doesn't need to be too precise.
+                last_time = start_time
                 if cv2.getWindowProperty(self.name, cv2.WND_PROP_VISIBLE) < 1:
                     break
                 key = cv2.pollKey() & 0xFF
@@ -202,7 +204,6 @@ class CV2Window:
                 # Display
                 with self._pic_lock:
                     current_pic = self._pic.copy() if self.auto_copy else self._pic
-
                 if current_pic is not None and current_pic.size > 0:
                     cv2.imshow(self.name, current_pic)
         
@@ -375,12 +376,10 @@ if __name__ == "__main__":
             if not window1._running and not window2._running:
                 break
             time.sleep(1) # Run for 10 seconds
-
         print("Multi-window test finished. Closing windows...")
     except Exception as e:
         logger.error(f"Error during multi-window test: {e}")
     finally:
         window1.close()
         window2.close()
-        
     print("All tests completed.")
