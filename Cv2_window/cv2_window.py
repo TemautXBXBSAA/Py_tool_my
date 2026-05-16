@@ -158,7 +158,10 @@ class Cv2Window:
                     self._board_event_handler(key)
 
                 #show_callback
-                self._show_callback()
+                try:
+                    self._show_callback()
+                except Exception as e:
+                    logger.warning(f"Error in show callback for window '{self.name}': {e}")
 
                 # Display
                 with self._pic_lock:
